@@ -11,7 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { noteKeys, saveNote, useNote, useSetFavorite, type Note, type Tag } from '@/features/notes/api';
 import { formatNoteDate } from '@/features/notes/format';
-import { useAddTag, useRemoveTag, useTags } from '@/features/tags/api';
+import { resolveTag, useAddTag, useRemoveTag, useTags } from '@/features/tags/api';
 import { useTheme } from '@/hooks/use-theme';
 
 const AUTOSAVE_DELAY_MS = 1500;
@@ -116,17 +116,22 @@ function NoteEditor({ id, initialNote }: { id: string; initialNote: Note | null 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function tagNote(name: string) {
-    // note_tags references the note, so make sure it's saved first.
-    await persist({ createIfEmpty: true });
-    if (exists.current) addTag.mutate({ noteId: id, name });
+  async function applyTag(tag: Tag, isNew: boolean) {
+    // note_tags references the note, so a brand-new note has to be saved first.
+    if (!exists.current) await persist({ createIfEmpty: true });
+    if (exists.current) addTag.mutate({ noteId: id, tag, isNew });
+  }
+
+  function createTag(name: string) {
+    const { tag, isNew } = resolveTag(name, allTags.data ?? []);
+    applyTag(tag, isNew);
   }
 
   function toggleTag(tag: Tag) {
     if (noteTags.some((t) => t.id === tag.id)) {
       removeTag.mutate({ noteId: id, tagId: tag.id });
     } else {
-      tagNote(tag.name);
+      applyTag(tag, false);
     }
   }
 
@@ -217,7 +222,7 @@ function NoteEditor({ id, initialNote }: { id: string; initialNote: Note | null 
           tags={allTags.data ?? []}
           selectedIds={noteTags.map((tag) => tag.id)}
           onToggle={toggleTag}
-          onCreate={tagNote}
+          onCreate={createTag}
           onClose={() => setTagMenuOpen(false)}
         />
       )}

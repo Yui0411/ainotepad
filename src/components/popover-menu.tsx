@@ -44,6 +44,7 @@ export function PopoverMenu({ side, onClose, children, style }: PopoverMenuProps
 type MenuItemProps = {
   label: string;
   onPress: () => void;
+  /** For toggle items: highlighted when true. */
   checked?: boolean;
   color?: string;
 };
@@ -56,11 +57,17 @@ export function MenuItem({ label, onPress, checked, color }: MenuItemProps) {
       onPress={onPress}
       accessibilityRole={checked === undefined ? 'menuitem' : 'checkbox'}
       accessibilityState={checked === undefined ? undefined : { checked }}
-      style={({ pressed }) => [styles.item, pressed && { backgroundColor: theme.backgroundElement }]}>
-      <ThemedText style={[styles.itemLabel, color ? { color } : null]} numberOfLines={1}>
+      style={({ pressed }) => [
+        styles.item,
+        checked && { backgroundColor: theme.accent },
+        pressed && styles.pressed,
+        pressed && !checked && { backgroundColor: theme.backgroundElement },
+      ]}>
+      <ThemedText
+        style={[styles.itemLabel, checked ? styles.checkedLabel : color ? { color } : null]}
+        numberOfLines={1}>
         {label}
       </ThemedText>
-      {checked && <ThemedText themeColor="accent">✓</ThemedText>}
     </Pressable>
   );
 }
@@ -88,11 +95,19 @@ const styles = StyleSheet.create({
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.three,
+    marginHorizontal: Spacing.one,
+    paddingHorizontal: Spacing.two + Spacing.one,
     paddingVertical: Spacing.two + Spacing.one,
+    borderRadius: Spacing.two,
     gap: Spacing.two,
   },
   itemLabel: {
     flex: 1,
+  },
+  checkedLabel: {
+    color: '#ffffff',
+  },
+  pressed: {
+    opacity: 0.8,
   },
 });

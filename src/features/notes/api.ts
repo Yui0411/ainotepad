@@ -34,7 +34,8 @@ export function useNotes() {
         .from('notes')
         .select(NOTE_COLUMNS)
         .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('position', { referencedTable: 'tags' });
       if (error) throw error;
       return data as Note[];
     },
@@ -51,6 +52,7 @@ export function useNote(id: string) {
         .select(NOTE_COLUMNS)
         .eq('id', id)
         .is('deleted_at', null)
+        .order('position', { referencedTable: 'tags' })
         .maybeSingle();
       if (error) throw error;
       return data as Note | null;
@@ -89,7 +91,8 @@ export function useDeletedNotes() {
         .from('notes')
         .select(NOTE_COLUMNS)
         .not('deleted_at', 'is', null)
-        .order('deleted_at', { ascending: false });
+        .order('deleted_at', { ascending: false })
+        .order('position', { referencedTable: 'tags' });
       if (error) throw error;
       return data as Note[];
     },
