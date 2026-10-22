@@ -1,4 +1,11 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+} from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
 
@@ -21,27 +28,70 @@ export type Note = {
 // tags(...) follows the note_tags join table.
 const NOTE_COLUMNS = 'id, body, created_at, updated_at, is_favorite, tags(id, name)';
 
+export type NoteFilters = {
+  tagIds: string[];
+  favoritesOnly: boolean;
+};
+
+export const NOTES_PAGE_SIZE = 50;
+
 export const noteKeys = {
   all: ['notes'] as const,
-  list: ['notes', 'list'] as const,
+  /** Prefix shared by every filtered variant of the notes list. */
+  lists: ['notes', 'list'] as const,
+  list: (filters: NoteFilters) =>
+    ['notes', 'list', { tagIds: [...filters.tagIds].sort(), favoritesOnly: filters.favoritesOnly }] as const,
   bin: ['notes', 'bin'] as const,
   detail: (id: string) => ['notes', 'detail', id] as const,
 };
 
-export function useNotes() {
-  return useQuery({
-    queryKey: noteKeys.list,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('notes')
-        .select(NOTE_COLUMNS)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .order('position', { referencedTable: 'tags' });
+/** The last note of a page; the next page starts after it. */
+type PageCursor = { createdAt: string; id: string } | null;
+
+export type NotesPages = InfiniteData<Note[], PageCursor>;
+
+/** The notes list, newest first, loaded a page at a time with filters applied on the server. */
+export function useNotes(filters: NoteFilters) {
+  return useInfiniteQuery({
+    queryKey: noteKeys.list(filters),
+    initialPageParam: null as PageCursor,
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await supabase.rpc('list_notes', {
+        page_size: NOTES_PAGE_SIZE,
+        after_created_at: pageParam?.createdAt ?? null,
+        after_id: pageParam?.id ?? null,
+        filter_tag_ids: filters.tagIds.length > 0 ? filters.tagIds : null,
+        favorites_only: filters.favoritesOnly,
+      });
       if (error) throw error;
       return data as Note[];
     },
+    getNextPageParam: (lastPage): PageCursor | undefined => {
+      if (lastPage.length < NOTES_PAGE_SIZE) return undefined;
+      const last = lastPage[lastPage.length - 1];
+      return { createdAt: last.created_at, id: last.id };
+    },
   });
+}
+
+/** Finds a note in any loaded page of any cached notes list. */
+function findCachedListNote(queryClient: QueryClient, id: string): { note: Note; updatedAt: number } | undefined {
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: noteKeys.lists })) {
+    const pages = query.state.data as NotesPages | undefined;
+    const note = pages?.pages.flat().find((n) => n.id === id);
+    if (note) return { note, updatedAt: query.state.dataUpdatedAt };
+  }
+  return undefined;
+}
+
+/** Applies `update` to every cached notes list. */
+function updateCachedLists(queryClient: QueryClient, update: (pages: Note[][], filters: NoteFilters) => Note[][]) {
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: noteKeys.lists })) {
+    const filters = query.queryKey[2] as NoteFilters;
+    queryClient.setQueryData<NotesPages>(query.queryKey, (data) =>
+      data ? { ...data, pages: update(data.pages, filters) } : data,
+    );
+  }
 }
 
 /**
@@ -52,8 +102,8 @@ export function useNote(id: string) {
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: noteKeys.detail(id),
-    initialData: () => queryClient.getQueryData<Note[]>(noteKeys.list)?.find((note) => note.id === id),
-    initialDataUpdatedAt: () => queryClient.getQueryState(noteKeys.list)?.dataUpdatedAt,
+    initialData: () => findCachedListNote(queryClient, id)?.note,
+    initialDataUpdatedAt: () => findCachedListNote(queryClient, id)?.updatedAt,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('notes')
@@ -96,13 +146,14 @@ export async function saveNote(id: string, body: string, probablyExists: boolean
 export function cacheNoteBody(queryClient: QueryClient, id: string, body: string) {
   const now = new Date().toISOString();
   queryClient.setQueryData<Note | null>(noteKeys.detail(id), (note) => (note ? { ...note, body } : note));
-  queryClient.setQueryData<Note[]>(noteKeys.list, (notes) => {
-    if (!notes) return notes;
-    if (notes.some((note) => note.id === id)) {
-      return notes.map((note) => (note.id === id ? { ...note, body } : note));
+  updateCachedLists(queryClient, (pages, filters) => {
+    if (pages.some((page) => page.some((note) => note.id === id))) {
+      return pages.map((page) => page.map((note) => (note.id === id ? { ...note, body } : note)));
     }
+    // A new note only belongs at the top of the unfiltered list.
+    if (filters.tagIds.length > 0 || filters.favoritesOnly || pages.length === 0) return pages;
     const created: Note = { id, body, created_at: now, updated_at: now, is_favorite: false, tags: [] };
-    return [created, ...notes];
+    return [[created, ...pages[0]], ...pages.slice(1)];
   });
 }
 
@@ -174,8 +225,8 @@ export function useSetFavorite() {
       queryClient.setQueryData<Note | null>(noteKeys.detail(id), (note) =>
         note ? { ...note, is_favorite: isFavorite } : note,
       );
-      queryClient.setQueryData<Note[]>(noteKeys.list, (notes) =>
-        notes?.map((note) => (note.id === id ? { ...note, is_favorite: isFavorite } : note)),
+      updateCachedLists(queryClient, (pages) =>
+        pages.map((page) => page.map((note) => (note.id === id ? { ...note, is_favorite: isFavorite } : note))),
       );
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: noteKeys.all }),

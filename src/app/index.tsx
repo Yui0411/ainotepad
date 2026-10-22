@@ -33,7 +33,6 @@ export default function NotesScreen() {
   const theme = useTheme();
   const isOnline = useIsOnline();
   const insets = useSafeAreaInsets();
-  const notes = useNotes();
   const tags = useTags();
   const deleteNotes = useDeleteNotes();
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -45,11 +44,12 @@ export default function NotesScreen() {
 
   // Ignore filter selections for tags that have since been deleted.
   const activeTagIds = selectedTagIds.filter((id) => (tags.data ?? []).some((tag) => tag.id === id));
-  const visibleNotes = (notes.data ?? []).filter(
-    (note) =>
-      (!favoritesOnly || note.is_favorite) &&
-      activeTagIds.every((tagId) => note.tags.some((tag) => tag.id === tagId)),
-  );
+  const notes = useNotes({ tagIds: activeTagIds, favoritesOnly });
+  const visibleNotes = notes.data?.pages.flat() ?? [];
+
+  function loadMore() {
+    if (notes.hasNextPage && !notes.isFetchingNextPage) notes.fetchNextPage();
+  }
 
   // Android back leaves select mode instead of leaving the app.
   useEffect(() => {
@@ -215,7 +215,12 @@ export default function NotesScreen() {
         }
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 96 }]}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        refreshControl={<RefreshControl refreshing={notes.isRefetching} onRefresh={refresh} />}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={notes.isFetchingNextPage ? <ActivityIndicator style={styles.footer} /> : undefined}
+        refreshControl={
+          <RefreshControl refreshing={notes.isRefetching && !notes.isFetchingNextPage} onRefresh={refresh} />
+        }
       />
 
       {!selecting && (
@@ -266,6 +271,9 @@ const styles = StyleSheet.create({
   listHeader: {
     marginBottom: Spacing.three,
     marginHorizontal: -Spacing.three,
+  },
+  footer: {
+    marginTop: Spacing.three,
   },
   separator: {
     height: Spacing.two,
