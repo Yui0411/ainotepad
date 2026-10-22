@@ -83,6 +83,10 @@ export default function SearchScreen() {
               <ThemedText themeColor="textSecondary" style={styles.centerText}>
                 Search by meaning. Try something vague, like &quot;that time my car was acting weird&quot;.
               </ThemedText>
+            ) : search.fetchStatus === 'paused' ? (
+              <ThemedText themeColor="textSecondary" style={styles.centerText}>
+                You&apos;re offline. Search needs a connection.
+              </ThemedText>
             ) : search.isFetching ? (
               <ActivityIndicator />
             ) : search.isError ? (

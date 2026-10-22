@@ -23,12 +23,15 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useDeleteNotes, useNotes } from '@/features/notes/api';
+import { clearAllDrafts, hasDrafts } from '@/features/notes/drafts';
 import { useTags } from '@/features/tags/api';
+import { useIsOnline } from '@/hooks/use-is-online';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
 
 export default function NotesScreen() {
   const theme = useTheme();
+  const isOnline = useIsOnline();
   const insets = useSafeAreaInsets();
   const notes = useNotes();
   const tags = useTags();
@@ -88,10 +91,26 @@ export default function NotesScreen() {
 
   function confirmSignOut() {
     setMenuOpen(false);
-    Alert.alert('Sign out?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => supabase.auth.signOut() },
-    ]);
+    const unsynced = hasDrafts();
+    Alert.alert(
+      'Sign out?',
+      unsynced ? "Some edits haven't synced yet and will be lost if you sign out now." : undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: unsynced ? 'Sign out anyway' : 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+              Alert.alert("Couldn't sign out. Check your connection and try again.");
+              return;
+            }
+            clearAllDrafts();
+          },
+        },
+      ],
+    );
   }
 
   const refresh = () => {
@@ -163,12 +182,23 @@ export default function NotesScreen() {
           />
         )}
         ListHeaderComponent={
-          <TagFilter tags={tags.data ?? []} selectedIds={activeTagIds} onChange={setSelectedTagIds} />
+          <View style={styles.listHeaderContent}>
+            {!isOnline && (
+              <View style={[styles.offlineBanner, { backgroundColor: theme.backgroundElement }]}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  You&apos;re offline. Edits are saved on this phone and will sync when you reconnect.
+                </ThemedText>
+              </View>
+            )}
+            <TagFilter tags={tags.data ?? []} selectedIds={activeTagIds} onChange={setSelectedTagIds} />
+          </View>
         }
         ListHeaderComponentStyle={styles.listHeader}
         ListEmptyComponent={
           <View style={styles.empty}>
-            {notes.isPending ? (
+            {notes.isPending && notes.fetchStatus === 'paused' ? (
+              <ThemedText themeColor="textSecondary">Your notes will load when you&apos;re back online.</ThemedText>
+            ) : notes.isPending ? (
               <ActivityIndicator />
             ) : notes.isError ? (
               <ThemedText themeColor="danger">Couldn&apos;t load notes. Pull down to retry.</ThemedText>
@@ -190,7 +220,7 @@ export default function NotesScreen() {
 
       {!selecting && (
         <Pressable
-          onPress={() => router.push(`/note/${Crypto.randomUUID()}`)}
+          onPress={() => router.push({ pathname: '/note/[id]', params: { id: Crypto.randomUUID(), new: '1' } })}
           accessibilityRole="button"
           accessibilityLabel="New note"
           style={({ pressed }) => [
@@ -224,6 +254,14 @@ const styles = StyleSheet.create({
   list: {
     paddingTop: Spacing.three,
     paddingHorizontal: Spacing.three,
+  },
+  listHeaderContent: {
+    gap: Spacing.three,
+  },
+  offlineBanner: {
+    marginHorizontal: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
   },
   listHeader: {
     marginBottom: Spacing.three,

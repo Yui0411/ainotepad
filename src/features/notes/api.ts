@@ -1,6 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
+
+const UNIQUE_VIOLATION = '23505';
 
 export type Tag = {
   id: string;
@@ -42,10 +44,16 @@ export function useNotes() {
   });
 }
 
-/** Resolves to null when the note doesn't exist yet (a new, unsaved note). */
+/**
+ * Resolves to null when the note doesn't exist yet (a new, unsaved note).
+ * Starts from the copy in the notes list, so notes open instantly and offline.
+ */
 export function useNote(id: string) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: noteKeys.detail(id),
+    initialData: () => queryClient.getQueryData<Note[]>(noteKeys.list)?.find((note) => note.id === id),
+    initialDataUpdatedAt: () => queryClient.getQueryState(noteKeys.list)?.dataUpdatedAt,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('notes')
@@ -60,12 +68,42 @@ export function useNote(id: string) {
   });
 }
 
-/** Inserts the note on first save, updates it afterwards. */
-export async function saveNote(id: string, body: string, exists: boolean) {
-  const { error } = exists
-    ? await supabase.from('notes').update({ body }).eq('id', id)
-    : await supabase.from('notes').insert({ id, body });
+async function updateBody(id: string, body: string): Promise<boolean> {
+  const { data, error } = await supabase.from('notes').update({ body }).eq('id', id).select('id');
   if (error) throw error;
+  return data.length > 0;
+}
+
+/**
+ * Saves a note's text, creating the note if needed. `probablyExists` only picks
+ * which request to try first; the other is the fallback, so a wrong guess
+ * (e.g. a note created offline and synced twice) still ends up saved once.
+ */
+export async function saveNote(id: string, body: string, probablyExists: boolean) {
+  if (probablyExists && (await updateBody(id, body))) return;
+
+  const { error } = await supabase.from('notes').insert({ id, body });
+  if (!error) return;
+  if (error.code !== UNIQUE_VIOLATION) throw error;
+  // Already created (by an earlier attempt or another sync): update it instead.
+  await updateBody(id, body);
+}
+
+/**
+ * Puts unsaved text into the cached note and notes list straight away, so it
+ * shows (and is kept offline) before the server has confirmed the save.
+ */
+export function cacheNoteBody(queryClient: QueryClient, id: string, body: string) {
+  const now = new Date().toISOString();
+  queryClient.setQueryData<Note | null>(noteKeys.detail(id), (note) => (note ? { ...note, body } : note));
+  queryClient.setQueryData<Note[]>(noteKeys.list, (notes) => {
+    if (!notes) return notes;
+    if (notes.some((note) => note.id === id)) {
+      return notes.map((note) => (note.id === id ? { ...note, body } : note));
+    }
+    const created: Note = { id, body, created_at: now, updated_at: now, is_favorite: false, tags: [] };
+    return [created, ...notes];
+  });
 }
 
 /** Soft-deletes: the notes stay in the database with deleted_at set. */
