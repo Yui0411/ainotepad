@@ -1,0 +1,9 @@
+project_id = "ainotepad"
+
+# Both functions authorize requests themselves with @supabase/server, because the
+# platform's verify_jwt check doesn't understand the new sb_publishable_/sb_secret_ keys.
+[functions.search]
+verify_jwt = false
+
+[functions.embed-notes]
+verify_jwt = false
