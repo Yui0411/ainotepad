@@ -49,6 +49,8 @@ function RootNavigator() {
         <Stack.Screen name="index" options={{ title: 'Notes' }} />
         <Stack.Screen name="note/[id]" options={{ title: '' }} />
         <Stack.Screen name="search" options={{ title: 'Search' }} />
+        <Stack.Screen name="bin" options={{ title: 'Bin' }} />
+        <Stack.Screen name="tags" options={{ title: 'Tags' }} />
       </Stack.Protected>
 
       <Stack.Protected guard={!signedIn}>

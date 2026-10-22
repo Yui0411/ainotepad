@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -66,7 +67,12 @@ export default function SearchScreen() {
         data={search.data?.results ?? []}
         keyExtractor={(result) => result.id}
         renderItem={({ item }) => (
-          <NoteCard id={item.id} body={item.body} createdAt={item.created_at} tags={item.tags} />
+          <NoteCard
+            body={item.body}
+            createdAt={item.created_at}
+            tags={item.tags}
+            onPress={() => router.push(`/note/${item.id}`)}
+          />
         )}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + Spacing.four }]}

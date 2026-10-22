@@ -52,6 +52,37 @@ export function useAddTag() {
   });
 }
 
+export type TagWithCount = Tag & { noteCount: number };
+
+/** Tags with how many notes (including binned ones) use each. */
+export function useTagsWithCounts() {
+  return useQuery({
+    queryKey: [...tagKeys.all, 'counts'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('tags').select('id, name, note_tags(count)').order('name');
+      if (error) throw error;
+      return (data as { id: string; name: string; note_tags: { count: number }[] }[]).map(
+        (tag): TagWithCount => ({ id: tag.id, name: tag.name, noteCount: tag.note_tags[0]?.count ?? 0 }),
+      );
+    },
+  });
+}
+
+/** Deletes the tag everywhere; the database removes it from every note. */
+export function useDeleteTag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (tagId: string) => {
+      const { error } = await supabase.from('tags').delete().eq('id', tagId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: noteKeys.all });
+      queryClient.invalidateQueries({ queryKey: tagKeys.all });
+    },
+  });
+}
+
 export function useRemoveTag() {
   const queryClient = useQueryClient();
   return useMutation({

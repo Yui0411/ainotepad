@@ -20,12 +20,14 @@ const NOTE_COLUMNS = 'id, body, created_at, updated_at, tags(id, name)';
 
 export const noteKeys = {
   all: ['notes'] as const,
-  detail: (id: string) => ['notes', id] as const,
+  list: ['notes', 'list'] as const,
+  bin: ['notes', 'bin'] as const,
+  detail: (id: string) => ['notes', 'detail', id] as const,
 };
 
 export function useNotes() {
   return useQuery({
-    queryKey: noteKeys.all,
+    queryKey: noteKeys.list,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('notes')
@@ -63,14 +65,55 @@ export async function saveNote(id: string, body: string, exists: boolean) {
   if (error) throw error;
 }
 
-export function useDeleteNote() {
+/** Soft-deletes: the notes stay in the database with deleted_at set. */
+export function useDeleteNotes() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (ids: string[]) => {
       const { error } = await supabase
         .from('notes')
         .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id);
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: noteKeys.all }),
+  });
+}
+
+export function useDeletedNotes() {
+  return useQuery({
+    queryKey: noteKeys.bin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('notes')
+        .select(NOTE_COLUMNS)
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
+      if (error) throw error;
+      return data as Note[];
+    },
+  });
+}
+
+export function useRestoreNotes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from('notes').update({ deleted_at: null }).in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: noteKeys.all }),
+  });
+}
+
+/** Permanently deletes binned notes. Pass no ids to empty the whole bin. */
+export function usePurgeNotes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids?: string[]) => {
+      let query = supabase.from('notes').delete().not('deleted_at', 'is', null);
+      if (ids) query = query.in('id', ids);
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: noteKeys.all }),
