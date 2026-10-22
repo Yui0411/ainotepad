@@ -12,11 +12,12 @@ export type Note = {
   body: string;
   created_at: string;
   updated_at: string;
+  is_favorite: boolean;
   tags: Tag[];
 };
 
 // tags(...) follows the note_tags join table.
-const NOTE_COLUMNS = 'id, body, created_at, updated_at, tags(id, name)';
+const NOTE_COLUMNS = 'id, body, created_at, updated_at, is_favorite, tags(id, name)';
 
 export const noteKeys = {
   all: ['notes'] as const,
@@ -117,5 +118,25 @@ export function usePurgeNotes() {
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: noteKeys.all }),
+  });
+}
+
+/** Updates the cached note right away so the star responds instantly. */
+export function useSetFavorite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) => {
+      const { error } = await supabase.from('notes').update({ is_favorite: isFavorite }).eq('id', id);
+      if (error) throw error;
+    },
+    onMutate: ({ id, isFavorite }) => {
+      queryClient.setQueryData<Note | null>(noteKeys.detail(id), (note) =>
+        note ? { ...note, is_favorite: isFavorite } : note,
+      );
+      queryClient.setQueryData<Note[]>(noteKeys.list, (notes) =>
+        notes?.map((note) => (note.id === id ? { ...note, is_favorite: isFavorite } : note)),
+      );
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: noteKeys.all }),
   });
 }

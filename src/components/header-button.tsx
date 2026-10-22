@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, type TextStyle } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing, type ThemeColor } from '@/constants/theme';
@@ -9,7 +9,6 @@ type HeaderButtonProps = {
   color?: ThemeColor;
   disabled?: boolean;
   accessibilityLabel?: string;
-  labelStyle?: TextStyle;
 };
 
 export function HeaderButton({
@@ -18,7 +17,6 @@ export function HeaderButton({
   color = 'accent',
   disabled = false,
   accessibilityLabel,
-  labelStyle,
 }: HeaderButtonProps) {
   return (
     <Pressable
@@ -28,7 +26,7 @@ export function HeaderButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.button, (pressed || disabled) && styles.dimmed]}>
-      <ThemedText type="smallBold" themeColor={color} style={labelStyle}>
+      <ThemedText type="smallBold" themeColor={color}>
         {label}
       </ThemedText>
     </Pressable>

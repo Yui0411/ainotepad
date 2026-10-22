@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Keyboard, StyleSheet, TextInput, View } from 'react-native';
 
 import { Chip } from '@/components/chip';
-import { HeaderButton } from '@/components/header-button';
+import { HeaderIconButton } from '@/components/header-icon-button';
 import { TagMenu } from '@/components/tag-menu';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { noteKeys, saveNote, useNote, type Note, type Tag } from '@/features/notes/api';
+import { noteKeys, saveNote, useNote, useSetFavorite, type Note, type Tag } from '@/features/notes/api';
 import { formatNoteDate } from '@/features/notes/format';
 import { useAddTag, useRemoveTag, useTags } from '@/features/tags/api';
 import { useTheme } from '@/hooks/use-theme';
@@ -55,11 +55,13 @@ function NoteEditor({ id, initialNote }: { id: string; initialNote: Note | null 
   const { data: note } = useNote(id);
   const allTags = useTags();
   const addTag = useAddTag();
+  const setFavoriteMutation = useSetFavorite();
   const removeTag = useRemoveTag();
 
   const [body, setBody] = useState(initialNote?.body ?? '');
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(initialNote?.is_favorite ?? false);
   const noteTags = note?.tags ?? [];
 
   const latestBody = useRef(initialNote?.body ?? '');
@@ -128,6 +130,18 @@ function NoteEditor({ id, initialNote }: { id: string; initialNote: Note | null 
     }
   }
 
+  async function toggleFavorite() {
+    const next = !isFavorite;
+    setIsFavorite(next);
+    // A brand-new note has to exist before it can be starred.
+    await persist({ createIfEmpty: true });
+    if (!exists.current) {
+      setIsFavorite(!next);
+      return;
+    }
+    setFavoriteMutation.mutate({ id, isFavorite: next }, { onError: () => setIsFavorite(!next) });
+  }
+
   function openTagMenu() {
     Keyboard.dismiss();
     setTagMenuOpen(!tagMenuOpen);
@@ -139,12 +153,21 @@ function NoteEditor({ id, initialNote }: { id: string; initialNote: Note | null 
         options={{
           title: formatNoteDate(initialNote?.created_at ?? new Date().toISOString()),
           headerRight: () => (
-            <HeaderButton
-              label="+"
-              accessibilityLabel="Tags"
-              labelStyle={styles.plusLabel}
-              onPress={openTagMenu}
-            />
+            <View style={styles.headerButtons}>
+              <HeaderIconButton
+                icon={isFavorite ? 'star' : 'star-outline'}
+                color={isFavorite ? theme.star : theme.textSecondary}
+                accessibilityLabel="Favourite"
+                selected={isFavorite}
+                onPress={toggleFavorite}
+              />
+              <HeaderIconButton
+                icon="add"
+                color={theme.accent}
+                accessibilityLabel="Tags"
+                onPress={openTagMenu}
+              />
+            </View>
           ),
         }}
       />
@@ -211,9 +234,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  plusLabel: {
-    fontSize: 26,
-    lineHeight: 28,
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   editor: {
     flex: 1,

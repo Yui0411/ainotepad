@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Crypto from 'expo-crypto';
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -14,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderButton } from '@/components/header-button';
+import { HeaderIconButton } from '@/components/header-icon-button';
 import { NoteCard } from '@/components/note-card';
 import { MenuItem, PopoverMenu } from '@/components/popover-menu';
 import { TagFilter } from '@/components/tag-filter';
@@ -33,14 +35,17 @@ export default function NotesScreen() {
   const deleteNotes = useDeleteNotes();
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   // Non-null while in select mode (entered by long-pressing a note).
   const [selection, setSelection] = useState<string[] | null>(null);
   const selecting = selection !== null;
 
   // Ignore filter selections for tags that have since been deleted.
   const activeTagIds = selectedTagIds.filter((id) => (tags.data ?? []).some((tag) => tag.id === id));
-  const visibleNotes = (notes.data ?? []).filter((note) =>
-    activeTagIds.every((tagId) => note.tags.some((tag) => tag.id === tagId)),
+  const visibleNotes = (notes.data ?? []).filter(
+    (note) =>
+      (!favoritesOnly || note.is_favorite) &&
+      activeTagIds.every((tagId) => note.tags.some((tag) => tag.id === tagId)),
   );
 
   // Android back leaves select mode instead of leaving the app.
@@ -114,15 +119,30 @@ export default function NotesScreen() {
             : {
                 title: '',
                 headerLeft: () => (
-                  <HeaderButton
-                    label="☰"
-                    color="text"
+                  <HeaderIconButton
+                    icon="menu"
+                    color={theme.text}
                     accessibilityLabel="Menu"
-                    labelStyle={styles.menuIcon}
                     onPress={() => setMenuOpen(!menuOpen)}
                   />
                 ),
-                headerRight: () => <HeaderButton label="Search" onPress={() => router.push('/search')} />,
+                headerRight: () => (
+                  <View style={styles.headerButtons}>
+                    <HeaderIconButton
+                      icon={favoritesOnly ? 'star' : 'star-outline'}
+                      color={favoritesOnly ? theme.star : theme.text}
+                      accessibilityLabel="Show favourites only"
+                      selected={favoritesOnly}
+                      onPress={() => setFavoritesOnly(!favoritesOnly)}
+                    />
+                    <HeaderIconButton
+                      icon="search"
+                      color={theme.text}
+                      accessibilityLabel="Search"
+                      onPress={() => router.push('/search')}
+                    />
+                  </View>
+                ),
               }
         }
       />
@@ -136,6 +156,7 @@ export default function NotesScreen() {
             body={item.body}
             createdAt={item.created_at}
             tags={item.tags.map((tag) => tag.name)}
+            favorite={item.is_favorite}
             selected={selecting ? selection.includes(item.id) : undefined}
             onPress={() => (selecting ? toggleSelected(item.id) : router.push(`/note/${item.id}`))}
             onLongPress={() => (selecting ? toggleSelected(item.id) : setSelection([item.id]))}
@@ -153,7 +174,11 @@ export default function NotesScreen() {
               <ThemedText themeColor="danger">Couldn&apos;t load notes. Pull down to retry.</ThemedText>
             ) : (
               <ThemedText themeColor="textSecondary">
-                {activeTagIds.length > 0 ? 'No notes with these tags.' : 'No notes yet. Tap + to write one.'}
+                {favoritesOnly
+                  ? 'No favourites here. Tap the star in a note to add one.'
+                  : activeTagIds.length > 0
+                    ? 'No notes with these tags.'
+                    : 'No notes yet. Tap + to write one.'}
               </ThemedText>
             )}
           </View>
@@ -173,7 +198,7 @@ export default function NotesScreen() {
             { backgroundColor: theme.accent, bottom: insets.bottom + Spacing.four },
             pressed && styles.pressed,
           ]}>
-          <ThemedText style={styles.fabLabel}>+</ThemedText>
+          <Ionicons name="add" size={32} color="#ffffff" />
         </Pressable>
       )}
 
@@ -192,9 +217,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  menuIcon: {
-    fontSize: 22,
-    lineHeight: 26,
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   list: {
     paddingTop: Spacing.three,
@@ -220,11 +245,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-  },
-  fabLabel: {
-    color: '#ffffff',
-    fontSize: 32,
-    lineHeight: 36,
   },
   pressed: {
     opacity: 0.8,

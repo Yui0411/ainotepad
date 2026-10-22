@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -9,13 +10,14 @@ type NoteCardProps = {
   body: string;
   createdAt: string;
   tags: string[];
+  favorite?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
   /** Set while the list is in select mode; undefined otherwise. */
   selected?: boolean;
 };
 
-export function NoteCard({ body, createdAt, tags, onPress, onLongPress, selected }: NoteCardProps) {
+export function NoteCard({ body, createdAt, tags, favorite = false, onPress, onLongPress, selected }: NoteCardProps) {
   const theme = useTheme();
   const snippet = noteSnippet(body);
   const selecting = selected !== undefined;
@@ -35,6 +37,7 @@ export function NoteCard({ body, createdAt, tags, onPress, onLongPress, selected
       <View style={styles.content}>
         <ThemedText numberOfLines={3}>{snippet || 'Empty note'}</ThemedText>
         <View style={styles.meta}>
+          {favorite && <Ionicons name="star" size={14} color={theme.star} accessibilityLabel="Favourite" />}
           <ThemedText type="small" themeColor="textSecondary">
             {formatNoteDate(createdAt)}
           </ThemedText>
